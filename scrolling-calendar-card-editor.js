@@ -4,6 +4,8 @@ import {
   css,
 } from "https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js";
 
+console.log("ScrollingCalendarCardEditor: Module loaded v2.0");
+
 class ScrollingCalendarCardEditor extends LitElement {
   static get properties() {
     return {
@@ -14,6 +16,7 @@ class ScrollingCalendarCardEditor extends LitElement {
 
   setConfig(config) {
     this._config = config;
+    console.log("ScrollingCalendarCardEditor: setConfig called", config);
   }
 
   static get styles() {
