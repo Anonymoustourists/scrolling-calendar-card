@@ -6,7 +6,7 @@ class ScrollingCalendarCardEditor extends LitElement {
   static get properties() {
     return {
       hass: {},
-      _config: { state: true },
+      _config: { attribute: false },
     };
   }
 

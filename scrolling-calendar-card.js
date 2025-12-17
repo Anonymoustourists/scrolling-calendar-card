@@ -131,8 +131,11 @@ class ScrollingCalendarCard extends LitElement {
         try {
             // Using REST API as requested
             // Endpoint: calendars/{entity_id}?start={start}&end={end}
-            // Note: Standard API might need encoded params, but ISO strings usually work fine in HA calls.
-            const url = `calendars/${entityId}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(endIso)}`;
+            const params = new URLSearchParams({
+                start: start,
+                end: endIso
+            });
+            const url = `calendars/${entityId}?${params.toString()}`;
             const events = await this._hass.callApi('GET', url);
             
             // Assign color to each event
