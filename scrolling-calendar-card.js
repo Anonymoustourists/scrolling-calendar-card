@@ -1,6 +1,6 @@
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { LitElement, html, css } from 'https://unpkg.com/lit-element@2.4.0/lit-element.js?module';
 
-console.log('scrolling-calendar-card module loaded');
+console.log('scrolling-calendar-card module loaded v2.1');
 
 class ScrollingCalendarCard extends LitElement {
   static get properties() {
@@ -27,6 +27,7 @@ class ScrollingCalendarCard extends LitElement {
         color: var(--primary-text-color, #fff);
         border-radius: var(--ha-card-border-radius, 12px);
         box-shadow: var(--ha-card-box-shadow, none);
+        border: 1px solid var(--ha-card-border-color, rgba(0,0,0,0));
       }
       .card-header {
         padding: 16px;
@@ -123,23 +124,36 @@ class ScrollingCalendarCard extends LitElement {
     let allEvents = [];
 
     const entities = this.config.entities || [];
-
-    for (const entityConf of entities) {
-        // Handle both simple string list (legacy) and new object list
-        const entity_id = typeof entityConf === 'string' ? entityConf : entityConf.entity;
-        const color = typeof entityConf === 'string' ? null : entityConf.color;
+    
+    // Convert entity list to valid start/end/entity_ids request for callWS
+    // Home Assistant calendar/get_events supports multiple entities
+    
+    const entityIds = entities.map(e => typeof e === 'string' ? e : e.entity);
+    
+    try {
+        const events = await this._hass.callWS({
+            type: 'calendar/get_events',
+            start_date_time: start,
+            end_date_time: endIso,
+            entity_ids: entityIds
+        });
         
-        try {
-            // Mock implementation uses callApi or we can simulate it
-            const events = await this._hass.callApi('GET', `calendars/${entity_id}/events?start=${start}&end=${endIso}`);
+        // Response key is entity_id -> array of events
+        // We need to flatten and assign colors
+        
+        for (const [entityId, entityEvents] of Object.entries(events)) {
+            const entityConf = entities.find(e => 
+                (typeof e === 'string' && e === entityId) || 
+                (typeof e === 'object' && e.entity === entityId)
+            );
+            const color = (entityConf && typeof entityConf !== 'string') ? entityConf.color : null;
             
-            // Attach color to events
-            const coloredEvents = events.map(e => ({ ...e, color }));
-            
+            const coloredEvents = entityEvents.map(e => ({ ...e, color }));
             allEvents = allEvents.concat(coloredEvents);
-        } catch (e) {
-            console.error(`Error fetching events for ${entity_id}`, e);
         }
+
+    } catch (e) {
+        console.error(`Error fetching calendar events`, e);
     }
 
     // Sort by start time
@@ -212,7 +226,9 @@ class ScrollingCalendarCard extends LitElement {
       return html`
         <ha-card>
           <div class="card-header">Upcoming Events</div>
-          <div style="padding: 16px;">No upcoming events found.</div>
+          <div style="padding: 16px;">
+            ${this.config.entities ? 'No upcoming events found.' : 'Please configure entities.'}
+          </div>
         </ha-card>
       `;
     }
@@ -254,3 +270,11 @@ class ScrollingCalendarCard extends LitElement {
 }
 
 customElements.define('scrolling-calendar-card', ScrollingCalendarCard);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "scrolling-calendar-card",
+  name: "Scrolling Calendar Card",
+  preview: true,
+  description: "A Kiosk-style scrolling calendar card."
+});
