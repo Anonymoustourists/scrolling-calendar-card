@@ -1,5 +1,8 @@
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/core/lit-core.min.js';
 
+// Ensure the Lovelace visual editor element is registered when this card is loaded.
+import './scrolling-calendar-card-editor.js';
+
 console.log('scrolling-calendar-card module loaded v2.2');
 
 class ScrollingCalendarCard extends LitElement {
@@ -16,13 +19,30 @@ class ScrollingCalendarCard extends LitElement {
     return document.createElement("scrolling-calendar-card-editor");
   }
 
+  static getStubConfig() {
+    return {
+      type: 'custom:scrolling-calendar-card',
+      entities: [{ entity: '', color: '#44739e' }],
+      scroll_speed: 5,
+      max_days: 7,
+      show_date: true,
+      show_time: true,
+      time_format: '24h',
+    };
+  }
+
   static get styles() {
     return css`
       :host {
         display: block;
+      }
+
+      ha-card {
         height: 400px; /* Fixed height for scrolling area */
         overflow: hidden;
         position: relative;
+        display: flex;
+        flex-direction: column;
         background: var(--ha-card-background, #1c1c1c);
         color: var(--primary-text-color, #fff);
         border-radius: var(--ha-card-border-radius, 12px);
@@ -37,12 +57,17 @@ class ScrollingCalendarCard extends LitElement {
         z-index: 2;
         position: relative;
       }
-      #scroll-container {
+      #scroll-viewport {
+        flex: 1;
+        overflow: hidden;
+        padding: 0;
+      }
+
+      #scroll-track {
         height: 100%;
-        overflow-y: hidden; /* Hide scrollbar */
-        padding: 0; 
         display: flex;
         flex-direction: column;
+        will-change: transform;
       }
       .event-item {
         display: flex;
@@ -93,12 +118,25 @@ class ScrollingCalendarCard extends LitElement {
     this._transitionEnabled = true;
   }
 
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._scrollTimer) {
+      clearInterval(this._scrollTimer);
+      this._scrollTimer = null;
+    }
+  }
+
   setConfig(config) {
     if (!config.entities) {
       throw new Error('Please define entities');
     }
     this.config = config;
     this._startScroll();
+
+    // If hass is already available (e.g., config edits), refetch immediately.
+    if (this._hass) {
+      this._fetchAllEvents();
+    }
   }
 
   set hass(hass) {
@@ -181,6 +219,16 @@ class ScrollingCalendarCard extends LitElement {
       }, speed);
   }
 
+  _placeholderImageDataUrl() {
+    // Inline SVG placeholder to avoid external network dependencies.
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <rect width="160" height="160" fill="#2f2f2f"/>
+  <text x="80" y="86" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#bdbdbd">No Image</text>
+</svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
+
   _getImageUrl(event) {
       if (event.description) {
           const match = event.description.match(/https?:\/\/[^\s]+(jpg|jpeg|png|gif|webp)/i); // Simple image extraction
@@ -192,7 +240,7 @@ class ScrollingCalendarCard extends LitElement {
           }
           if (match) return match[0];
       }
-      return 'https://via.placeholder.com/80?text=No+Img';
+      return this._placeholderImageDataUrl();
   }
 
   _formatTime(isoStr) {
@@ -238,20 +286,23 @@ class ScrollingCalendarCard extends LitElement {
     const transformStyle = `translateY(-${this._scrollIndex * 100}%)`;
 
     return html`
-      <!-- Kiosk mode usually hides header or makes it overlay. Keeping it for now. -->
-      <div class="card-header">Upcoming Events</div>
-      <div id="scroll-container" style="transition: ${transitionStyle}; transform: ${transformStyle};">
-        ${displayEvents.map((event, index) => html`
-          <div class="event-item">
-            <img class="event-image" src="${this._getImageUrl(event)}" alt="Event Image" style="width: 50%;"> 
-            <div class="event-details" style="width: 50%; border-left: ${event.color ? `8px solid ${event.color}` : 'none'}; padding-left: 24px;">
-              <div class="event-title" style="font-size: 1.5rem; margin-bottom: 8px;">${event.summary}</div>
-              ${this.config.show_time !== false ? html`<div class="event-time" style="font-size: 1.2rem;">${this._formatTime(event.start.dateTime)}</div>` : ''}
-              ${this.config.show_date !== false ? html`<div class="event-date" style="font-size: 1rem;">${this._formatDate(event.start.dateTime)}</div>` : ''}
-            </div>
+      <ha-card>
+        <div class="card-header">Upcoming Events</div>
+        <div id="scroll-viewport">
+          <div id="scroll-track" style="transition: ${transitionStyle}; transform: ${transformStyle};">
+            ${displayEvents.map((event) => html`
+              <div class="event-item">
+                <img class="event-image" src="${this._getImageUrl(event)}" alt="Event Image" style="width: 50%;"> 
+                <div class="event-details" style="width: 50%; border-left: ${event.color ? `8px solid ${event.color}` : 'none'}; padding-left: 24px;">
+                  <div class="event-title" style="font-size: 1.5rem; margin-bottom: 8px;">${event.summary}</div>
+                  ${this.config.show_time !== false ? html`<div class="event-time" style="font-size: 1.2rem;">${this._formatTime(event.start.dateTime)}</div>` : ''}
+                  ${this.config.show_date !== false ? html`<div class="event-date" style="font-size: 1rem;">${this._formatDate(event.start.dateTime)}</div>` : ''}
+                </div>
+              </div>
+            `)}
           </div>
-        `)}
-      </div>
+        </div>
+      </ha-card>
     `;
   }
   

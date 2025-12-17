@@ -11,7 +11,7 @@ class ScrollingCalendarCardEditor extends LitElement {
   }
 
   setConfig(config) {
-    this._config = config;
+    this._config = { ...config };
     console.log("ScrollingCalendarCardEditor: setConfig called", config);
   }
 
@@ -78,12 +78,13 @@ class ScrollingCalendarCardEditor extends LitElement {
   }
 
   configChanged(newConfig) {
-    const event = new Event("config-changed", {
-      bubbles: true,
-      composed: true,
-    });
-    event.detail = { config: newConfig };
-    this.dispatchEvent(event);
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
   _valueChanged(ev) {
