@@ -43,8 +43,8 @@ class ScrollingCalendarCard extends LitElement {
         position: relative;
         display: flex;
         flex-direction: column;
-        background: var(--ha-card-background, #1c1c1c);
-        color: var(--primary-text-color, #fff);
+        background: var(--scc-background, var(--ha-card-background, #1c1c1c));
+        color: var(--scc-text-color, var(--primary-text-color, #fff));
         border-radius: var(--ha-card-border-radius, 12px);
         box-shadow: var(--ha-card-box-shadow, none);
         border: 1px solid var(--ha-card-border-color, rgba(0,0,0,0));
@@ -81,9 +81,9 @@ class ScrollingCalendarCard extends LitElement {
         box-sizing: border-box;
       }
       .event-image {
-        width: 80px;
-        height: 80px;
-        object-fit: cover;
+        width: var(--scc-image-width, 50%);
+        height: 100%;
+        object-fit: var(--scc-image-fit, cover);
         background-color: #333;
       }
       .event-details {
@@ -115,6 +115,8 @@ class ScrollingCalendarCard extends LitElement {
     this._events = [];
     this._scrollIndex = 0;
     this._scrollTimer = null;
+    this._imageMapTimer = null;
+    this._imageMap = null;
     this._transitionEnabled = true;
   }
 
@@ -123,6 +125,10 @@ class ScrollingCalendarCard extends LitElement {
     if (this._scrollTimer) {
       clearInterval(this._scrollTimer);
       this._scrollTimer = null;
+    }
+    if (this._imageMapTimer) {
+      clearInterval(this._imageMapTimer);
+      this._imageMapTimer = null;
     }
   }
 
@@ -133,9 +139,56 @@ class ScrollingCalendarCard extends LitElement {
     this.config = config;
     this._startScroll();
 
+    this._setupImageMapRefresh();
+
     // If hass is already available (e.g., config edits), refetch immediately.
     if (this._hass) {
       this._fetchAllEvents();
+    }
+  }
+
+  async _fetchImageMapOnce() {
+    const url = this.config?.image_map_url;
+    if (!url) {
+      this._imageMap = null;
+      return;
+    }
+
+    try {
+      const resp = await fetch(url, { cache: 'no-store' });
+      if (!resp.ok) {
+        console.warn(`scrolling-calendar-card: image_map_url fetch failed (${resp.status})`, url);
+        this._imageMap = null;
+        return;
+      }
+      const data = await resp.json();
+      this._imageMap = data;
+    } catch (e) {
+      console.warn('scrolling-calendar-card: image_map_url fetch error', e);
+      this._imageMap = null;
+    }
+  }
+
+  _setupImageMapRefresh() {
+    if (this._imageMapTimer) {
+      clearInterval(this._imageMapTimer);
+      this._imageMapTimer = null;
+    }
+
+    const url = this.config?.image_map_url;
+    if (!url) {
+      this._imageMap = null;
+      return;
+    }
+
+    // Immediate fetch, then periodic refresh.
+    this._fetchImageMapOnce();
+
+    const refreshSeconds = Number(this.config?.image_map_refresh_seconds || 300);
+    if (Number.isFinite(refreshSeconds) && refreshSeconds > 0) {
+      this._imageMapTimer = setInterval(() => {
+        this._fetchImageMapOnce();
+      }, refreshSeconds * 1000);
     }
   }
 
@@ -176,8 +229,12 @@ class ScrollingCalendarCard extends LitElement {
             const url = `calendars/${entityId}?${params.toString()}`;
             const events = await this._hass.callApi('GET', url);
             
-            // Assign color to each event
-            const coloredEvents = events.map(e => ({ ...e, color }));
+            // Preserve the source calendar entityId and per-calendar color
+            const coloredEvents = events.map(e => ({
+              ...e,
+              color,
+              calendarEntityId: entityId,
+            }));
             allEvents = allEvents.concat(coloredEvents);
             
         } catch (e) {
@@ -229,17 +286,155 @@ class ScrollingCalendarCard extends LitElement {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }
 
-  _getImageUrl(event) {
-      if (event.description) {
-          const match = event.description.match(/https?:\/\/[^\s]+(jpg|jpeg|png|gif|webp)/i); // Simple image extraction
-           // Fallback for placeholder in description if not direct extension match
-          if (!match && event.description.includes('http')) {
-               const urlRegex = /(https?:\/\/[^\s]+)/;
-               const found = event.description.match(urlRegex);
-               if (found) return found[0];
-          }
-          if (match) return match[0];
+  _getEventUid(event) {
+    return (
+      event?.uid ||
+      event?.recurring_event_id ||
+      event?.recurrence_id ||
+      event?.id ||
+      ''
+    );
+  }
+
+  _getImageFromMap(event) {
+    const map = this._imageMap;
+    if (!map) return null;
+
+    const uid = this._getEventUid(event);
+    const calendarEntityId = event?.calendarEntityId || '';
+    const start = event?.start?.dateTime || event?.start?.date || '';
+    const summary = (event?.summary || '').toString();
+
+    // Preferred: by_uid map
+    const byUid = map?.by_uid;
+    if (uid && byUid && typeof byUid === 'object' && byUid[uid]?.image_url) {
+      return byUid[uid].image_url;
+    }
+
+    // Fallback: by_fallback key (same hashing as generator script)
+    const raw = `${calendarEntityId}|${summary}|${start}`;
+    const byFallback = map?.by_fallback;
+    if (byFallback && typeof byFallback === 'object') {
+      const compositeKey = raw;
+      if (byFallback[compositeKey]?.image_url) return byFallback[compositeKey].image_url;
+    }
+
+    // Support a flat list: { events: [ { uid, image_url } ] }
+    const events = Array.isArray(map?.events) ? map.events : null;
+    if (events) {
+      const found = events.find((e) => (uid && e.uid === uid) || (e.calendar_entity_id === calendarEntityId && e.summary === summary && e.start === start));
+      if (found?.image_url) return found.image_url;
+      if (found?.image) return found.image;
+    }
+
+    return null;
+  }
+
+  _parseRegexLike(input) {
+    if (typeof input !== 'string') return null;
+    // Support /pattern/flags
+    if (!input.startsWith('/')) return null;
+    const lastSlash = input.lastIndexOf('/');
+    if (lastSlash <= 0) return null;
+    const pattern = input.slice(1, lastSlash);
+    const flags = input.slice(lastSlash + 1);
+    try {
+      return new RegExp(pattern, flags);
+    } catch {
+      return null;
+    }
+  }
+
+  _matchesRule(event, rule) {
+    if (!rule || typeof rule !== 'object') return false;
+
+    const match = rule.match && typeof rule.match === 'object' ? rule.match : rule;
+    const ruleEntity = match.entity || match.calendar || null;
+    const ruleUid = match.uid || null;
+    const ruleSummary = match.summary || match.title || null;
+
+    if (ruleEntity && event?.calendarEntityId !== ruleEntity) return false;
+
+    if (ruleUid) {
+      const uid = this._getEventUid(event);
+      if (!uid || uid !== ruleUid) return false;
+    }
+
+    if (ruleSummary) {
+      const summary = (event?.summary || '').toString();
+      const asRegex = this._parseRegexLike(ruleSummary);
+      if (asRegex) {
+        if (!asRegex.test(summary)) return false;
+      } else {
+        if (!summary.toLowerCase().includes(ruleSummary.toLowerCase())) return false;
       }
+    }
+
+    return true;
+  }
+
+  _getImageFromRules(event) {
+    const rules = Array.isArray(this.config?.image_rules) ? this.config.image_rules : [];
+    for (const rule of rules) {
+      const image = rule?.image;
+      if (!image) continue;
+      if (this._matchesRule(event, rule)) return image;
+    }
+    return null;
+  }
+
+  _getImageFromDescription(description) {
+    if (!description || typeof description !== 'string') return null;
+
+    // Explicit directive takes precedence: image: <url>
+    const directiveMatch = description.match(/^\s*(?:image|img)\s*:\s*(\S+)\s*$/im);
+    if (directiveMatch?.[1]) return directiveMatch[1];
+
+    // Fall back to first URL ending in a common image extension
+    const extMatch = description.match(/https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp)(?:\?[^\s]*)?/i);
+    if (extMatch?.[0]) return extMatch[0];
+
+    // Or any first URL (last resort)
+    const urlMatch = description.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch?.[0]) return urlMatch[0];
+
+    return null;
+  }
+
+  _cssVarStyle() {
+    const vars = [];
+    const background = this.config?.background_color;
+    const textColor = this.config?.text_color;
+    const imageWidth = this.config?.image_width;
+    const imageFit = this.config?.image_fit;
+
+    if (background) vars.push(`--scc-background:${background}`);
+    if (textColor) vars.push(`--scc-text-color:${textColor}`);
+    if (imageWidth) vars.push(`--scc-image-width:${imageWidth}`);
+    if (imageFit) vars.push(`--scc-image-fit:${imageFit}`);
+
+    return vars.join(';');
+  }
+
+  _getImageUrl(event) {
+      // 0) External map generated by helper (preferred)
+      const fromMap = this._getImageFromMap(event);
+      if (fromMap) return fromMap;
+
+      // 1) Explicit description directive (image: ...)
+      if (this.config?.image_from_description !== false) {
+      const fromDescription = this._getImageFromDescription(event?.description);
+      if (fromDescription) return fromDescription;
+      }
+
+      // 2) Config rule-based mapping
+      const fromRules = this._getImageFromRules(event);
+      if (fromRules) return fromRules;
+
+      // 3) Configurable default image
+      if (this.config?.default_image) return this.config.default_image;
+
+      // 4) Inline placeholder
       return this._placeholderImageDataUrl();
   }
 
@@ -263,7 +458,7 @@ class ScrollingCalendarCard extends LitElement {
   render() {
     if (!this._events.length) {
       return html`
-        <ha-card>
+        <ha-card style="${this._cssVarStyle()}">
           <div class="card-header">Upcoming Events</div>
           <div style="padding: 16px;">
             ${this.config.entities ? 'No upcoming events found.' : 'Please configure entities.'}
@@ -286,14 +481,14 @@ class ScrollingCalendarCard extends LitElement {
     const transformStyle = `translateY(-${this._scrollIndex * 100}%)`;
 
     return html`
-      <ha-card>
+      <ha-card style="${this._cssVarStyle()}">
         <div class="card-header">Upcoming Events</div>
         <div id="scroll-viewport">
           <div id="scroll-track" style="transition: ${transitionStyle}; transform: ${transformStyle};">
             ${displayEvents.map((event) => html`
               <div class="event-item">
-                <img class="event-image" src="${this._getImageUrl(event)}" alt="Event Image" style="width: 50%;"> 
-                <div class="event-details" style="width: 50%; border-left: ${event.color ? `8px solid ${event.color}` : 'none'}; padding-left: 24px;">
+                <img class="event-image" src="${this._getImageUrl(event)}" alt="Event Image"> 
+                <div class="event-details" style="border-left: ${event.color ? `8px solid ${event.color}` : 'none'}; padding-left: 24px;">
                   <div class="event-title" style="font-size: 1.5rem; margin-bottom: 8px;">${event.summary}</div>
                   ${this.config.show_time !== false ? html`<div class="event-time" style="font-size: 1.2rem;">${this._formatTime(event.start.dateTime)}</div>` : ''}
                   ${this.config.show_date !== false ? html`<div class="event-date" style="font-size: 1rem;">${this._formatDate(event.start.dateTime)}</div>` : ''}

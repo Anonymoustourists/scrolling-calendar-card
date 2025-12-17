@@ -1,0 +1,62 @@
+# Example configuration for tools/ha_event_image_generator/generate_event_images.py
+#
+# IMPORTANT:
+# - Put your OpenAI key in an environment variable: OPENAI_API_KEY
+# - Put your Home Assistant Long-Lived Access Token in: HA_TOKEN
+#
+# This script:
+# 1) Pulls calendar events from Home Assistant
+# 2) Builds an image prompt (optionally via a chat model)
+# 3) Calls OpenAI Images API to generate an image
+# 4) Saves images under /config/www/... and writes a JSON map file
+
+home_assistant:
+  base_url: "https://hass.example.com"   # no trailing slash
+  # OR if running locally: "http://homeassistant.local:8123"
+  token_env: "HA_TOKEN"
+
+openai:
+  api_key_env: "OPENAI_API_KEY"
+  # Used only when use_chat_prompt_builder is true
+  chat_model: "gpt-4o-mini"
+  # Image model you requested
+  image_model: "gpt-image-1-mini"
+
+# Events to fetch for image generation
+window:
+  max_days: 14
+
+# Where images + JSON map should go on the machine running the script.
+# If you run the script on the HA host, using /config/www will make files available at /local.
+output:
+  images_dir: "/config/www/scrolling-calendar-card/event-images"
+  # URL prefix that corresponds to images_dir
+  images_url_prefix: "/local/scrolling-calendar-card/event-images"
+  # Map file written alongside images
+  map_file: "/config/www/scrolling-calendar-card/event-images/event-image-map.json"
+
+# Global prompt guidance
+prompting:
+  use_chat_prompt_builder: true
+  general_instruction: |
+    Create a clean, high-contrast illustration suitable for a Home Assistant dashboard card.
+    Avoid text, logos, watermarks, and photo-realistic faces.
+
+# Calendar-specific overrides (different instructions per calendar)
+calendars:
+  - entity_id: "calendar.personal"
+    instruction: |
+      Personal life events. Cozy, warm colors. Minimalist iconography.
+  - entity_id: "calendar.family"
+    instruction: |
+      Family schedule. Friendly, bright, playful but not childish.
+  - entity_id: "calendar.detroit_prep_family_calendar"
+    instruction: |
+      School-related events. Simple, professional, school-themed.
+
+# Regeneration behavior
+cache:
+  # Skip generating if an image already exists for the event uid.
+  skip_if_exists: true
+  # Force regeneration regardless of cache
+  force: false

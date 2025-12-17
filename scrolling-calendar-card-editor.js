@@ -74,6 +74,12 @@ class ScrollingCalendarCardEditor extends LitElement {
       button.remove-btn:hover {
         background-color: #d32f2f;
       }
+
+      .hint {
+        font-size: 0.85rem;
+        opacity: 0.8;
+        margin-top: 4px;
+      }
     `;
   }
 
@@ -235,6 +241,99 @@ class ScrollingCalendarCardEditor extends LitElement {
             <option value="12h">12 Hour (AM/PM)</option>
             <option value="24h">24 Hour</option>
           </select>
+        </div>
+
+        <div class="option-group">
+          <label>Images</label>
+          <div class="option">
+            <label>Image Map URL</label>
+            <input
+              type="text"
+              .value="${this._config.image_map_url || ""}"
+              .configValue="${"image_map_url"}"
+              @input="${(e) => this._valueChanged(e)}"
+              placeholder="/local/scrolling-calendar-card/event-images/event-image-map.json"
+            />
+          </div>
+          <div class="hint">
+            If provided, the card will load this JSON file and use it to map events to images (recommended for AI-generated images).
+          </div>
+          <div class="option">
+            <label>Map Refresh (sec)</label>
+            <input
+              type="number"
+              .value="${this._config.image_map_refresh_seconds || 300}"
+              .configValue="${"image_map_refresh_seconds"}"
+              @input="${(e) => this._valueChanged(e)}"
+            />
+          </div>
+          <div class="option">
+            <label>Default Image URL</label>
+            <input
+              type="text"
+              .value="${this._config.default_image || ""}"
+              .configValue="${"default_image"}"
+              @input="${(e) => this._valueChanged(e)}"
+              placeholder="/local/scrolling-calendar-card/default.png"
+            />
+          </div>
+          <div class="option">
+            <label>Image from Description</label>
+            <input
+              type="checkbox"
+              .checked="${this._config.image_from_description !== false}"
+              .configValue="${"image_from_description"}"
+              @change="${(e) => this._valueChanged(e)}"
+            />
+          </div>
+        </div>
+
+        <div class="option-group">
+          <label>Style</label>
+          <div class="option">
+            <label>Background Color</label>
+            <input
+              type="text"
+              .value="${this._config.background_color || ""}"
+              .configValue="${"background_color"}"
+              @input="${(e) => this._valueChanged(e)}"
+              placeholder="#1c1c1c"
+            />
+          </div>
+          <div class="option">
+            <label>Text Color</label>
+            <input
+              type="text"
+              .value="${this._config.text_color || ""}"
+              .configValue="${"text_color"}"
+              @input="${(e) => this._valueChanged(e)}"
+              placeholder="#ffffff"
+            />
+          </div>
+          <div class="option">
+            <label>Image Width</label>
+            <input
+              type="text"
+              .value="${this._config.image_width || ""}"
+              .configValue="${"image_width"}"
+              @input="${(e) => this._valueChanged(e)}"
+              placeholder="50% (or 240px)"
+            />
+          </div>
+          <div class="option">
+            <label>Image Fit</label>
+            <select
+              .value="${this._config.image_fit || "cover"}"
+              .configValue="${"image_fit"}"
+              @change="${(e) => this._valueChanged(e)}"
+            >
+              <option value="cover">cover</option>
+              <option value="contain">contain</option>
+              <option value="fill">fill</option>
+              <option value="none">none</option>
+              <option value="scale-down">scale-down</option>
+            </select>
+          </div>
         </div>
       </div>
     `;
