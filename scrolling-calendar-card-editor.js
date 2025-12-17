@@ -1,6 +1,6 @@
-import { LitElement, html, css } from 'https://unpkg.com/lit-element@2.4.0/lit-element.js?module';
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/core/lit-core.min.js';
 
-console.log("ScrollingCalendarCardEditor: Module loaded v2.1");
+console.log("ScrollingCalendarCardEditor: Module loaded v2.2");
 
 class ScrollingCalendarCardEditor extends LitElement {
   static get properties() {
