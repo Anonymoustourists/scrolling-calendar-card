@@ -122,38 +122,26 @@ class ScrollingCalendarCard extends LitElement {
     const endIso = end.toISOString();
 
     let allEvents = [];
-
     const entities = this.config.entities || [];
-    
-    // Convert entity list to valid start/end/entity_ids request for callWS
-    // Home Assistant calendar/get_events supports multiple entities
-    
-    const entityIds = entities.map(e => typeof e === 'string' ? e : e.entity);
-    
-    try {
-        const events = await this._hass.callWS({
-            type: 'calendar/get_events',
-            start_date_time: start,
-            end_date_time: endIso,
-            entity_ids: entityIds
-        });
-        
-        // Response key is entity_id -> array of events
-        // We need to flatten and assign colors
-        
-        for (const [entityId, entityEvents] of Object.entries(events)) {
-            const entityConf = entities.find(e => 
-                (typeof e === 'string' && e === entityId) || 
-                (typeof e === 'object' && e.entity === entityId)
-            );
-            const color = (entityConf && typeof entityConf !== 'string') ? entityConf.color : null;
-            
-            const coloredEvents = entityEvents.map(e => ({ ...e, color }));
-            allEvents = allEvents.concat(coloredEvents);
-        }
 
-    } catch (e) {
-        console.error(`Error fetching calendar events`, e);
+    for (const entityConf of entities) {
+        const entityId = typeof entityConf === 'string' ? entityConf : entityConf.entity;
+        const color = typeof entityConf === 'string' ? null : entityConf.color;
+
+        try {
+            // Using REST API as requested
+            // Endpoint: calendars/{entity_id}?start={start}&end={end}
+            // Note: Standard API might need encoded params, but ISO strings usually work fine in HA calls.
+            const url = `calendars/${entityId}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(endIso)}`;
+            const events = await this._hass.callApi('GET', url);
+            
+            // Assign color to each event
+            const coloredEvents = events.map(e => ({ ...e, color }));
+            allEvents = allEvents.concat(coloredEvents);
+            
+        } catch (e) {
+            console.error(`Error fetching events for ${entityId}`, e);
+        }
     }
 
     // Sort by start time
