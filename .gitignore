@@ -1,0 +1,5 @@
+node_modules
+.DS_Store
+# Development harness files
+index.html
+mock-data.js
