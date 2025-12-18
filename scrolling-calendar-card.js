@@ -42,7 +42,7 @@ class ScrollingCalendarCard extends LitElement {
         height: 100%;
         width: 100%;
         min-height: 260px;
-        aspect-ratio: var(--scc-aspect-ratio, auto);
+        aspect-ratio: var(--scc-aspect-ratio, 16 / 9);
         overflow: hidden;
         position: relative;
         display: flex;
@@ -550,9 +550,7 @@ class ScrollingCalendarCard extends LitElement {
     // Map legacy image_fit to background-size (screensaver layout).
     vars.push(`--scc-bg-size:${imageFit || 'cover'}`);
 
-    if (layout === 'overlay') {
-      vars.push(`--scc-aspect-ratio:${this.config?.aspect_ratio || '16 / 9'}`);
-    }
+    vars.push(`--scc-aspect-ratio:${this.config?.aspect_ratio || '16 / 9'}`);
 
     return vars.join(';');
   }
