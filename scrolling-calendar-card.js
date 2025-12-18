@@ -1,9 +1,17 @@
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/core/lit-core.min.js';
 
 // Ensure the Lovelace visual editor element is registered when this card is loaded.
-import './scrolling-calendar-card-editor.js';
+// Use a cache-busted URL so HA reliably picks up editor updates without requiring a resource URL change.
+const SCC_VERSION = '2.3.0';
+try {
+  const editorUrl = new URL('./scrolling-calendar-card-editor.js', import.meta.url);
+  editorUrl.searchParams.set('v', SCC_VERSION);
+  import(editorUrl.href);
+} catch (e) {
+  // Ignore editor-load failures; the card can still render without the visual editor.
+}
 
-console.log('scrolling-calendar-card module loaded v2.2');
+console.log(`scrolling-calendar-card module loaded v${SCC_VERSION}`);
 
 class ScrollingCalendarCard extends LitElement {
   static get properties() {

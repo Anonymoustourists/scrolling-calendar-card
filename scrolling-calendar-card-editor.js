@@ -17,11 +17,19 @@ class ScrollingCalendarCardEditor extends LitElement {
 
   static get styles() {
     return css`
+      :host {
+        display: block;
+        max-height: 100%;
+        overflow: auto;
+        box-sizing: border-box;
+      }
+
       .card-config {
         display: flex;
         flex-direction: column;
         gap: 16px;
         padding: 16px;
+        box-sizing: border-box;
       }
       .option {
         display: flex;
