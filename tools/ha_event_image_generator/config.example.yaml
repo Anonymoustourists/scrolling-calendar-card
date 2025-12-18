@@ -27,13 +27,31 @@ window:
   max_days: 14
 
 # Where images + JSON map should go on the machine running the script.
-# If you run the script on the HA host, using /config/www will make files available at /local.
+# LAN workflow (recommended): generate locally, then push to HA host www via SSH.
+# The card reads ONLY from /local/... and never calls a generator service.
 output:
-  images_dir: "/config/www/scrolling-calendar-card/event-images"
-  # URL prefix that corresponds to images_dir
-  images_url_prefix: "/local/scrolling-calendar-card/event-images"
-  # Map file written alongside images
-  map_file: "/config/www/scrolling-calendar-card/event-images/event-image-map.json"
+  # Local output directory (repo-relative recommended)
+  output_dir: "./out/event-images"
+  # Images are placed under output_dir/<image_subdir>
+  image_subdir: "img"
+  # URL prefix that corresponds to image files. With the default image_subdir, images are under /local/.../img
+  images_url_prefix: "/local/scrolling-calendar-card/event-images/img"
+  # JSON files written alongside output_dir
+  map_file: "./out/event-images/event-image-map.json"
+  status_file: "./out/event-images/event-status.json"
+  write_status_json: true
+
+# Optional post-processing step (after OpenAI image generation) to enforce aspect ratio / size.
+# This allows the generator to work with fixed-size model outputs but still produce consistent card imagery.
+postprocess:
+  # e.g. "3:4", "16:9". If omitted, keep original ratio.
+  target_aspect_ratio: "3:4"
+  # If set, resize final image to exact pixels after crop/pad.
+  # final_size_px: [768, 1024]
+  fit_mode: "pad"  # "pad" or "crop"
+
+# Legacy output keys (still supported):
+# output.images_dir + output.map_file (no img subdir) and output.images_url_prefix
 
 # Global prompt guidance
 prompting:
@@ -41,6 +59,75 @@ prompting:
   general_instruction: |
     Create a clean, high-contrast illustration suitable for a Home Assistant dashboard card.
     Avoid text, logos, watermarks, and photo-realistic faces.
+
+  # Optional character profiles to keep a consistent cartoon "family" look.
+  characters:
+    jaxon:
+      ref_images:
+        - "tools/ha_event_image_generator/assets/jaxon.png"
+      description: "Jaxon: a cheerful elementary-age boy, playful expression, bright hoodie, friendly cartoon style."
+    steven:
+      ref_images:
+        - "tools/ha_event_image_generator/assets/steven.png"
+      description: "Steven: friendly dad, short hair, casual modern clothes, warm smile, cartoon style."
+    amy:
+      ref_images:
+        - "tools/ha_event_image_generator/assets/amy.png"
+      description: "Amy: friendly mom, warm smile, casual cozy style, cartoon style."
+
+  # If a summary is unclear, skip image generation and write a question for later.
+  pending_questions_file: "./out/event-images/pending-questions.json"
+
+  # Optional YAML overrides where you can clarify event meaning keyed by uid/fallback key:
+  # overrides:
+  #   by_uid:
+  #     <uid>:
+  #       clarified_summary: "..."
+  #   by_fallback:
+  #     "calendar.entity|Summary|2025-01-01T00:00:00Z":
+  #       clarified_summary: "..."
+  overrides_file: "./tools/ha_event_image_generator/overrides.yaml"
+
+  recurrence:
+    reuse_by_uid: true
+    regenerate_if_summary_changes: false
+
+  # Rule-based prompt policy (top-down). First matching rule wins.
+  rules:
+    - id: "school_lunch_food"
+      when:
+        calendar_entity_id: "calendar.detroit_prep_family_calendar"
+        # food-ish single words or short phrases
+        max_words: 3
+        summary_regex: "^(pizza|tacos?|pasta|sandwich|burger|chicken|salad|nachos?)$"
+      action:
+        include_characters: ["jaxon"]
+        prompt_template: "Jaxon eating {{SUMMARY}} at a school cafeteria table, lunch tray, happy mood."
+        ask_if_unclear: false
+
+    - id: "family_activity"
+      when:
+        calendar_entity_id: "calendar.family"
+        min_words: 2
+      action:
+        include_characters: ["steven", "amy", "jaxon"]
+        prompt_template: "Steven, Amy, and Jaxon doing {{SUMMARY}} together as a family, cozy and fun scene."
+        ask_if_unclear: true
+
+    - id: "pistons_game"
+      when:
+        calendar_entity_id: "calendar.personal"
+        summary_regex: "Pistons\\s+v(?:s\\.?|ersus)\\s+(.*)$"
+      action:
+        include_characters: ["steven", "jaxon"]
+        prompt_template: "Steven and Jaxon at a Pistons game, playful non-violent rivalry with a {{GROUP1}} mascot: friendly tug-of-war over a basketball, big smiles, arena background."
+        ask_if_unclear: false
+
+    - id: "unclear_default"
+      when: {}
+      action:
+        prompt_template: "{{SUMMARY}}"
+        ask_if_unclear: true
 
 # Calendar-specific overrides (different instructions per calendar)
 calendars:

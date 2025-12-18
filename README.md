@@ -240,6 +240,27 @@ One-command generate + push:
 ./scripts/dev_workflow.sh tools/ha_event_image_generator/config.yaml ./out/event-images images,json,card
 ```
 
+### Pending questions + overrides (for unclear events)
+
+Some calendar event summaries are too vague (e.g. short codes or 1–2 word entries). The generator can skip those and ask you to clarify later.
+
+- Pending questions file (JSON): `./out/event-images/pending-questions.json`
+  - The generator writes entries like: `{ uid, fallback_key, calendar_entity_id, summary, start, question, suggested_examples, created_at }`
+- Status file (JSON): `./out/event-images/event-status.json`
+  - Includes `needs_info: true` when an event was skipped for clarification.
+
+To provide clarifications without editing your calendar events, use an overrides YAML file and point `prompting.overrides_file` to it:
+
+```yaml
+overrides:
+  by_uid:
+    "<uid>":
+      clarified_summary: "Jaxon school lunch: pizza"
+  by_fallback:
+    "calendar.family|Movie night|2025-12-20":
+      clarified_summary: "Family movie night at home"
+```
+
 ### 4) Point the card at the map
 
 Example card config:

@@ -3,3 +3,15 @@ node_modules
 # Development harness files
 index.html
 mock-data.js
+.env
+# Ignore local generator config files (examples and local copies)
+# e.g., tools/ha_event_image_generator/config.yaml
+tools/ha_event_image_generator/*.yaml
+
+# Generator local artifacts / secrets
+out/
+tools/ha_event_image_generator/.env
+tools/ha_event_image_generator/.venv/
+
+# Local reference images (personal) live here; keep paths but don't commit files
+tools/ha_event_image_generator/assets/
