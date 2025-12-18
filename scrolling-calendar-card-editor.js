@@ -106,7 +106,7 @@ class ScrollingCalendarCardEditor extends LitElement {
         delete this._config[target.configValue];
       } else {
         let value = target.value;
-        if (target.type === "number") {
+        if (target.type === "number" || target.type === "range") {
           value = Number(value);
         }
         if (target.type === "checkbox") {
@@ -156,9 +156,28 @@ class ScrollingCalendarCardEditor extends LitElement {
     }
 
     const entities = this._config.entities || [];
+    const layout = this._config.layout || 'split';
 
     return html`
       <div class="card-config">
+        <div class="option-group">
+          <label>Layout</label>
+          <div class="option">
+            <label>Mode</label>
+            <select
+              .value="${layout}"
+              .configValue="${"layout"}"
+              @change="${(e) => this._valueChanged(e)}"
+            >
+              <option value="split">Split (legacy)</option>
+              <option value="overlay">Overlay (kiosk/screensaver)</option>
+            </select>
+          </div>
+          <div class="hint">
+            Overlay mode renders a full-bleed background image with a bottom text band.
+          </div>
+        </div>
+
         <div class="option-group">
           <label>Calendars</label>
           ${entities.map((entityConf, index) => {
@@ -285,6 +304,60 @@ class ScrollingCalendarCardEditor extends LitElement {
               .configValue="${"image_from_description"}"
               @change="${(e) => this._valueChanged(e)}"
             />
+          </div>
+        </div>
+
+        <div class="option-group">
+          <label>Overlay Style</label>
+          <div class="option">
+            <label>Overlay Height (%)</label>
+            <input
+              type="range"
+              min="8"
+              max="30"
+              step="1"
+              .value="${Number(this._config.overlay_height_pct ?? 15)}"
+              .configValue="${"overlay_height_pct"}"
+              @input="${(e) => this._valueChanged(e)}"
+            />
+            <span>${Number(this._config.overlay_height_pct ?? 15)}%</span>
+          </div>
+          <div class="option">
+            <label>Overlay Opacity</label>
+            <input
+              type="range"
+              min="0.2"
+              max="0.9"
+              step="0.05"
+              .value="${Number(this._config.overlay_opacity ?? 0.55)}"
+              .configValue="${"overlay_opacity"}"
+              @input="${(e) => this._valueChanged(e)}"
+            />
+            <span>${Number(this._config.overlay_opacity ?? 0.55).toFixed(2)}</span>
+          </div>
+          <div class="option">
+            <label>Frame Width (px)</label>
+            <input
+              type="number"
+              min="0"
+              max="20"
+              step="1"
+              .value="${Number(this._config.frame_width_px ?? 6)}"
+              .configValue="${"frame_width_px"}"
+              @input="${(e) => this._valueChanged(e)}"
+            />
+          </div>
+          <div class="option">
+            <label>Show Calendar Name</label>
+            <input
+              type="checkbox"
+              .checked="${this._config.show_calendar_name === true}"
+              .configValue="${"show_calendar_name"}"
+              @change="${(e) => this._valueChanged(e)}"
+            />
+          </div>
+          <div class="hint">
+            These options primarily affect Overlay mode.
           </div>
         </div>
 

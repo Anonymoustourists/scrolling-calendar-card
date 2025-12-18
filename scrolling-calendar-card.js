@@ -35,10 +35,14 @@ class ScrollingCalendarCard extends LitElement {
     return css`
       :host {
         display: block;
+        height: 100%;
       }
 
       ha-card {
-        height: 400px; /* Fixed height for scrolling area */
+        height: 100%;
+        width: 100%;
+        min-height: 260px;
+        aspect-ratio: var(--scc-aspect-ratio, auto);
         overflow: hidden;
         position: relative;
         display: flex;
@@ -49,6 +53,7 @@ class ScrollingCalendarCard extends LitElement {
         box-shadow: var(--ha-card-box-shadow, none);
         border: 1px solid var(--ha-card-border-color, rgba(0,0,0,0));
       }
+
       .card-header {
         padding: 16px;
         font-size: 1.2rem;
@@ -70,21 +75,28 @@ class ScrollingCalendarCard extends LitElement {
         will-change: transform;
       }
       .event-item {
-        display: flex;
-        flex-direction: row;
         width: 100%;
         height: 100%; /* Full height of the card */
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 0; /* Removing border radius for full card feel */
+        border-radius: 0;
         overflow: hidden;
         flex-shrink: 0; 
         box-sizing: border-box;
+      }
+
+      /* Split (legacy) layout */
+      .layout-split {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.05);
       }
       .event-image {
         width: var(--scc-image-width, 50%);
         height: 100%;
         object-fit: var(--scc-image-fit, cover);
         background-color: #333;
+        flex-shrink: 0;
       }
       .event-details {
         padding: 8px 12px;
@@ -92,11 +104,6 @@ class ScrollingCalendarCard extends LitElement {
         flex-direction: column;
         justify-content: center;
         flex: 1;
-      }
-      .event-title {
-        font-weight: bold;
-        font-size: 1rem;
-        margin-bottom: 4px;
       }
       .event-time {
         font-size: 0.85rem;
@@ -106,6 +113,95 @@ class ScrollingCalendarCard extends LitElement {
         font-size: 0.75rem;
         opacity: 0.5;
         margin-top: 2px;
+      }
+
+      .event-frame {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        border: var(--scc-frame-width, 6px) solid var(--scc-frame-color, rgba(255,255,255,0.2));
+        background-color: #111;
+      }
+
+      .event-bg {
+        position: absolute;
+        inset: 0;
+        background-image: var(--scc-bg-image);
+        background-size: var(--scc-bg-size, cover);
+        background-position: var(--scc-image-position, center);
+        background-repeat: no-repeat;
+        transform: translateZ(0);
+      }
+
+      /* A subtle overall dim to help text readability on busy images */
+      .event-bg::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(0,0,0,0.15),
+          rgba(0,0,0,0.10) 55%,
+          rgba(0,0,0,0.35)
+        );
+      }
+
+      .overlay {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: var(--scc-overlay-height-pct, 15%);
+        min-height: 3.2rem;
+        padding: 0.9rem 1.1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.35rem;
+        box-sizing: border-box;
+        background: linear-gradient(
+          to top,
+          rgba(0,0,0,var(--scc-overlay-opacity, 0.55)),
+          rgba(0,0,0,0)
+        );
+      }
+
+      .event-title {
+        font-weight: 800;
+        font-size: var(--scc-title-font-size, clamp(22px, 3vw, 42px));
+        line-height: 1.05;
+        color: var(--scc-frame-color, #fff);
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.75);
+      }
+
+      .event-meta {
+        font-size: var(--scc-meta-font-size, clamp(14px, 2vw, 22px));
+        color: rgba(255,255,255,0.95);
+        opacity: 0.92;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.75);
+      }
+
+      .no-image-hint {
+        font-size: 0.9em;
+        opacity: 0.75;
+        margin-left: 0.5rem;
+      }
+
+      .empty {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        text-align: center;
+        opacity: 0.9;
       }
     `;
   }
@@ -286,6 +382,26 @@ class ScrollingCalendarCard extends LitElement {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }
 
+  _getCalendarColorForEvent(event) {
+    const fallback = '#44739e';
+    if (event?.color) return event.color;
+
+    const entityId = event?.calendarEntityId;
+    const entities = Array.isArray(this.config?.entities) ? this.config.entities : [];
+    const found = entities.find((e) => {
+      if (typeof e === 'string') return e === entityId;
+      return e?.entity === entityId;
+    });
+    if (found && typeof found === 'object' && found.color) return found.color;
+
+    return fallback;
+  }
+
+  _getCalendarName(entityId) {
+    if (!entityId || !this._hass?.states?.[entityId]) return entityId || '';
+    return this._hass.states[entityId]?.attributes?.friendly_name || entityId;
+  }
+
   _getEventUid(event) {
     return (
       event?.uid ||
@@ -408,34 +524,111 @@ class ScrollingCalendarCard extends LitElement {
     const imageWidth = this.config?.image_width;
     const imageFit = this.config?.image_fit;
 
+    const layout = (this.config?.layout || 'split').toString();
+
+    const overlayHeightPct = Number(this.config?.overlay_height_pct ?? 15);
+    const overlayOpacity = Number(this.config?.overlay_opacity ?? 0.55);
+    const frameWidthPx = Number(this.config?.frame_width_px ?? 6);
+
+    const titleFontSize = this.config?.title_font_size || 'clamp(22px, 3vw, 42px)';
+    const metaFontSize = this.config?.meta_font_size || 'clamp(14px, 2vw, 22px)';
+    const imagePosition = this.config?.image_position || 'center';
+
     if (background) vars.push(`--scc-background:${background}`);
     if (textColor) vars.push(`--scc-text-color:${textColor}`);
     if (imageWidth) vars.push(`--scc-image-width:${imageWidth}`);
     if (imageFit) vars.push(`--scc-image-fit:${imageFit}`);
 
+    if (Number.isFinite(overlayHeightPct)) vars.push(`--scc-overlay-height-pct:${overlayHeightPct}%`);
+    if (Number.isFinite(overlayOpacity)) vars.push(`--scc-overlay-opacity:${Math.max(0, Math.min(1, overlayOpacity))}`);
+    if (Number.isFinite(frameWidthPx)) vars.push(`--scc-frame-width:${Math.max(0, frameWidthPx)}px`);
+
+    if (titleFontSize) vars.push(`--scc-title-font-size:${titleFontSize}`);
+    if (metaFontSize) vars.push(`--scc-meta-font-size:${metaFontSize}`);
+    if (imagePosition) vars.push(`--scc-image-position:${imagePosition}`);
+
+    // Map legacy image_fit to background-size (screensaver layout).
+    vars.push(`--scc-bg-size:${imageFit || 'cover'}`);
+
+    if (layout === 'overlay') {
+      vars.push(`--scc-aspect-ratio:${this.config?.aspect_ratio || '16 / 9'}`);
+    }
+
     return vars.join(';');
   }
 
-  _getImageUrl(event) {
-      // 0) External map generated by helper (preferred)
-      const fromMap = this._getImageFromMap(event);
-      if (fromMap) return fromMap;
+  _renderEventSplit(event) {
+    const color = this._getCalendarColorForEvent(event);
+    const { url } = this._getImageInfo(event);
 
-      // 1) Explicit description directive (image: ...)
-      if (this.config?.image_from_description !== false) {
+    const time = this.config.show_time !== false ? this._formatTime(event?.start?.dateTime) : '';
+    const date = this.config.show_date !== false ? this._formatDate(event?.start?.dateTime || event?.start?.date) : '';
+
+    return html`
+      <div class="event-item layout-split">
+        <img class="event-image" src="${url}" alt="Event Image">
+        <div class="event-details" style="border-left: ${color ? `8px solid ${color}` : 'none'}; padding-left: 24px;">
+          <div class="event-title" style="font-size: 1.5rem; margin-bottom: 8px; color: inherit; text-shadow: none;">${event.summary || ''}</div>
+          ${time ? html`<div class="event-time" style="font-size: 1.2rem;">${time}</div>` : ''}
+          ${date ? html`<div class="event-date" style="font-size: 1rem;">${date}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderEventOverlay(event) {
+    const color = this._getCalendarColorForEvent(event);
+    const { url, isPlaceholder } = this._getImageInfo(event);
+
+    const startIso = event?.start?.dateTime || event?.start?.date || '';
+    const timeStr = this.config.show_time !== false ? this._formatTime(event?.start?.dateTime) : '';
+    const dateStr = this.config.show_date !== false ? this._formatDate(startIso) : '';
+    const metaParts = [timeStr, dateStr].filter(Boolean);
+
+    if (this.config?.show_calendar_name === true) {
+      const name = this._getCalendarName(event?.calendarEntityId);
+      if (name) metaParts.push(name);
+    }
+
+    const metaText = metaParts.join(' • ');
+    const style = `--scc-frame-color:${color};--scc-bg-image:url('${String(url).replace(/'/g, "\\'")}')`;
+
+    return html`
+      <div class="event-item">
+        <div class="event-frame" style="${style}">
+          <div class="event-bg" role="img" aria-label="Event image"></div>
+          <div class="overlay">
+            <div class="event-title" title="${event.summary || ''}">${event.summary || ''}</div>
+            <div class="event-meta">
+              ${metaText}
+              ${isPlaceholder ? html`<span class="no-image-hint">• No image</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _getImageInfo(event) {
+    // 0) External map generated by helper (preferred)
+    const fromMap = this._getImageFromMap(event);
+    if (fromMap) return { url: fromMap, isPlaceholder: false };
+
+    // 1) Explicit description directive (image: ...)
+    if (this.config?.image_from_description !== false) {
       const fromDescription = this._getImageFromDescription(event?.description);
-      if (fromDescription) return fromDescription;
-      }
+      if (fromDescription) return { url: fromDescription, isPlaceholder: false };
+    }
 
-      // 2) Config rule-based mapping
-      const fromRules = this._getImageFromRules(event);
-      if (fromRules) return fromRules;
+    // 2) Config rule-based mapping
+    const fromRules = this._getImageFromRules(event);
+    if (fromRules) return { url: fromRules, isPlaceholder: false };
 
-      // 3) Configurable default image
-      if (this.config?.default_image) return this.config.default_image;
+    // 3) Configurable default image
+    if (this.config?.default_image) return { url: this.config.default_image, isPlaceholder: false };
 
-      // 4) Inline placeholder
-      return this._placeholderImageDataUrl();
+    // 4) Inline placeholder
+    return { url: this._placeholderImageDataUrl(), isPlaceholder: true };
   }
 
   _formatTime(isoStr) {
@@ -459,13 +652,14 @@ class ScrollingCalendarCard extends LitElement {
     if (!this._events.length) {
       return html`
         <ha-card style="${this._cssVarStyle()}">
-          <div class="card-header">Upcoming Events</div>
-          <div style="padding: 16px;">
+          <div class="empty">
             ${this.config.entities ? 'No upcoming events found.' : 'Please configure entities.'}
           </div>
         </ha-card>
       `;
     }
+
+    const layout = (this.config?.layout || 'split').toString();
 
     // Kiosk Mode: Items are 100% height.
     // We use percentage logic for translateY.
@@ -482,18 +676,11 @@ class ScrollingCalendarCard extends LitElement {
 
     return html`
       <ha-card style="${this._cssVarStyle()}">
-        <div class="card-header">Upcoming Events</div>
+        ${layout !== 'overlay' ? html`<div class="card-header">Upcoming Events</div>` : ''}
         <div id="scroll-viewport">
           <div id="scroll-track" style="transition: ${transitionStyle}; transform: ${transformStyle};">
             ${displayEvents.map((event) => html`
-              <div class="event-item">
-                <img class="event-image" src="${this._getImageUrl(event)}" alt="Event Image"> 
-                <div class="event-details" style="border-left: ${event.color ? `8px solid ${event.color}` : 'none'}; padding-left: 24px;">
-                  <div class="event-title" style="font-size: 1.5rem; margin-bottom: 8px;">${event.summary}</div>
-                  ${this.config.show_time !== false ? html`<div class="event-time" style="font-size: 1.2rem;">${this._formatTime(event.start.dateTime)}</div>` : ''}
-                  ${this.config.show_date !== false ? html`<div class="event-date" style="font-size: 1rem;">${this._formatDate(event.start.dateTime)}</div>` : ''}
-                </div>
-              </div>
+              ${layout === 'overlay' ? this._renderEventOverlay(event) : this._renderEventSplit(event)}
             `)}
           </div>
         </div>
